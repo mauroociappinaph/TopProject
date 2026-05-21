@@ -109,15 +109,17 @@ def verify_internal_signature(x_internal_signature: str = Header(...)):
     if x_internal_signature != EXPECTED_SIGNATURE:
         raise HTTPException(status_code=403, detail="Firma de microservicio interna no válida. Zero Trust activa.")
 
+from app.ai.agents import execute_multi_agent_simulation
+
 @app.post("/api/v1/agent/run", dependencies=[Depends(verify_internal_signature)])
 async def run_agent_workflow(request: AgentExecutionRequest):
     try:
-        orchestrator = SimpleLangGraphOrchestrator(request.simulation_id, redis_client)
-        result = await orchestrator.execute(request.query)
-        return {
-            "simulation_id": request.simulation_id,
-            "status": "success",
-            "result": result
-        }
+        result = await execute_multi_agent_simulation(
+            query=request.query,
+            user_id=request.user_id,
+            simulation_id=request.simulation_id
+        )
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
