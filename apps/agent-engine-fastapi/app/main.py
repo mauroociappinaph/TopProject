@@ -46,33 +46,45 @@ def decrypt_metadata(encrypted: Dict[str, str], key: str) -> str:
     decrypted_bytes = cipher.decrypt_and_verify(ciphertext, tag)
     return decrypted_bytes.decode('utf-8')
 
+from app.db.mongo import get_mongo_db
+from datetime import datetime
+
 # Simulación de un Grafo de LangGraph
 class SimpleLangGraphOrchestrator:
     def __init__(self, simulation_id: str, redis_conn: redis.Redis):
         self.simulation_id = simulation_id
         self.redis = redis_conn
+        self.db = get_mongo_db()
 
-    def notify_step(self, agent_name: str, action: str, x: int, y: int, extra: Dict[str, Any]):
-        """Publica el estado actual en Redis para sincronización en tiempo real vía WebSockets."""
+    async def notify_step(self, agent_name: str, action: str, x: int, y: int, extra: Dict[str, Any]):
+        """Publica el estado actual en Redis y guarda la traza de ejecución en MongoDB."""
         payload = {
             "simulation_id": self.simulation_id,
             "agent_name": agent_name,
             "action": action,
             "coordinates": {"x": x, "y": y},
-            "extra": extra
+            "extra": extra,
+            "timestamp": datetime.utcnow().isoformat()
         }
+        # 1. Publicar a Redis Pub/Sub
         self.redis.publish("simulation:updates", json.dumps(payload))
+        
+        # 2. Guardar asíncronamente la traza en MongoDB
+        try:
+            await self.db["agent_logs"].insert_one(payload.copy())
+        except Exception as e:
+            print(f"Error al guardar traza en MongoDB: {e}")
 
     async def execute(self, query: str) -> Dict[str, Any]:
         # Nodo 1: Investigador (RAG + Pinecone Vector Search Mocked)
-        self.notify_step("Investigador", "Buscando contexto en Pinecone...", 100, 150, {"query": query})
+        await self.notify_step("Investigador", "Buscando contexto en Pinecone...", 100, 150, {"query": query})
         
         # Simulación de búsqueda semántica y cifrado
         raw_context = f"Documento confidencial sobre {query}: La clave del éxito es la arquitectura limpia."
         encrypted_context = encrypt_metadata(raw_context, AES_KEY)
         
         # Nodo 2: Redactor (Inferencia con Ollama/LLM Mocked)
-        self.notify_step("Redactor", "Generando respuesta usando Ollama...", 300, 200, {
+        await self.notify_step("Redactor", "Generando respuesta usando Ollama...", 300, 200, {
             "context_cifrado": encrypted_context["ciphertext"]
         })
         
@@ -81,13 +93,14 @@ class SimpleLangGraphOrchestrator:
         response_text = f"Respuesta basada en: '{decrypted_context}'. El flujo se completó correctamente."
         
         # Nodo 3: Supervisor (Validación)
-        self.notify_step("Supervisor", "Validando respuesta final...", 500, 150, {"aprobado": True})
+        await self.notify_step("Supervisor", "Validando respuesta final...", 500, 150, {"aprobado": True})
         
         return {
             "status": "completed",
             "response": response_text,
             "steps": ["Investigador (RAG)", "Redactor (Ollama)", "Supervisor (Aprobado)"]
         }
+
 
 # Guardia de Seguridad Zero Trust: Firma HMAC interna
 def verify_internal_signature(x_internal_signature: str = Header(...)):
