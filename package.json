@@ -1,0 +1,14 @@
+{
+  "name": "agentarena-monorepo",
+  "version": "1.0.0",
+  "description": "Monorepo para la simulación visual y depuración de flujos multi-agente en tiempo real",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "pnpm --filter web-frontend dev",
+    "dev:gateway": "pnpm --filter gateway-nestjs start:dev",
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "husky": "^8.0.3"
+  }
+}
